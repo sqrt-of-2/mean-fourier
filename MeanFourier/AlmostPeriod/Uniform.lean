@@ -594,12 +594,16 @@ protected lemma IsUAP.conj (hf : IsUAP f) : IsUAP fun x ↦ conj (f x) := hf.sta
 
 end NormedCommRing
 
+noncomputable def unitary_isUAP_bound {E : Type*} [NormedAddCommGroup E]
+    [InnerProductSpace ℂ E] [FiniteDimensional ℂ E]
+    (ρ : UnitaryRepresentation ℂ G E) (v w : E) (ε : ℝ) : ℝ :=
+  (Metric.coveringNumber (ε / (‖v‖ + 1)).toNNReal (Set.range fun t : G ↦ ρ t w)).toNat
+
 open scoped Pointwise InnerProductSpace Finset in
-theorem UnitaryRepresentation.isUAP_inner {E : Type*} [NormedAddCommGroup E]
+theorem UnitaryRepresentation.isUAPWith_inner {E : Type*} [NormedAddCommGroup E]
     [InnerProductSpace ℂ E] [FiniteDimensional ℂ E]
     (ρ : UnitaryRepresentation ℂ G E) (v w : E) :
-    IsUAP fun x ↦ ⟪ρ x v, w⟫_ℂ := by
-  classical
+    IsUAPWith (unitary_isUAP_bound ρ v w) (fun x ↦ ⟪ρ x v, w⟫_ℂ) := by
   intro ε hε
   have : ProperSpace E := FiniteDimensional.proper ℂ E
   have horb : TotallyBounded (Set.range fun t : G ↦ ρ t w) := by
@@ -608,48 +612,79 @@ theorem UnitaryRepresentation.isUAP_inner {E : Type*} [NormedAddCommGroup E]
     simp
   set ε' : ℝ := ε / (‖v‖ + 1) with hε'
   have hε'pos : 0 < ε' := by positivity
-  obtain ⟨c, hcsub, hcfin, hccover⟩ := totallyBounded_iff_subset.1 horb _
-    (Metric.dist_mem_uniformity hε'pos)
-  have hch : ∀ y ∈ c, ∃ t : G, ρ t w = y := fun y hy ↦ hcsub hy
+  set r : ℝ≥0 := ε'.toNNReal with hr
+  have hrpos : r ≠ 0 := by
+    rw [hr, ne_eq, Real.toNNReal_eq_zero, not_le]
+    exact hε'pos
+  have hcov_ne_top : Metric.coveringNumber r (Set.range fun t : G ↦ ρ t w) ≠ ⊤ :=
+    TotallyBounded.coveringNumber_ne_top horb hrpos
+  set C := Metric.minimalCover r (Set.range fun t : G ↦ ρ t w) with hC
+  have hC_subset : C ⊆ Set.range fun t : G ↦ ρ t w := Metric.minimalCover_subset
+  have hC_finite : C.Finite := Metric.finite_minimalCover
+  have hC_cover : Metric.IsCover r (Set.range fun t : G ↦ ρ t w) C := Metric.isCover_minimalCover hcov_ne_top
+  have hC_encard : C.encard = Metric.coveringNumber r (Set.range fun t : G ↦ ρ t w) := Metric.encard_minimalCover hcov_ne_top
+  have hch : ∀ y ∈ C, ∃ t : G, ρ t w = y := fun y hy ↦ hC_subset hy
   choose! tc htc using hch
-  set F : Finset G := hcfin.toFinset.image tc
-  refine ⟨#F, F, le_rfl, ?_⟩
-  rintro x -
-  have hx : ρ x w ∈ ⋃ y ∈ c, {z | (z, y) ∈ {p : E × E | dist p.1 p.2 < ε'}} :=
-    hccover ⟨x, rfl⟩
-  rw [Set.mem_iUnion₂] at hx
-  obtain ⟨y, hy, hxy⟩ := hx
-  refine ⟨tc y, Finset.mem_image_of_mem _ (hcfin.mem_toFinset.2 hy), (tc y)⁻¹ * x, ?_, ?_⟩
-  · rw [mem_uniformAP]
-    intro z
-    have hkey : ∀ (s : G) (z' : G), ⟪ρ (s⁻¹ * z') v, w⟫_ℂ = ⟪ρ z' v, ρ s w⟫_ℂ := by
-      intro s z'
-      have h1 : ρ (s⁻¹ * z') v = (ρ s).symm (ρ z' v) := by simp
-      rw [h1]
-      calc ⟪(ρ s).symm (ρ z' v), w⟫_ℂ
-          = ⟪ρ s ((ρ s).symm (ρ z' v)), ρ s w⟫_ℂ := ((ρ s).inner_map_map _ _).symm
-        _ = ⟪ρ z' v, ρ s w⟫_ℂ := by simp
-    have h1 : ⟪ρ (((tc y)⁻¹ * x)⁻¹ * z) v, w⟫_ℂ = ⟪ρ (tc y * z) v, ρ x w⟫_ℂ := by
-      rw [← hkey x (tc y * z)]
-      have : ((tc y)⁻¹ * x)⁻¹ * z = x⁻¹ * (tc y * z) := by group
-      rw [this]
-    have h2 : ⟪ρ z v, w⟫_ℂ = ⟪ρ (tc y * z) v, ρ (tc y) w⟫_ℂ := by
-      rw [← hkey (tc y) (tc y * z)]
-      have : (tc y)⁻¹ * (tc y * z) = z := by group
-      rw [this]
-    rw [h1, h2, ← inner_sub_right]
-    calc ‖⟪ρ (tc y * z) v, ρ x w - ρ (tc y) w⟫_ℂ‖
-        ≤ ‖ρ (tc y * z) v‖ * ‖ρ x w - ρ (tc y) w‖ := norm_inner_le_norm _ _
-      _ = ‖v‖ * ‖ρ x w - ρ (tc y) w‖ := by simp
-      _ ≤ ‖v‖ * ε' := by
-          gcongr
-          rw [htc y hy, ← dist_eq_norm]
-          exact hxy.le
-      _ ≤ ε := by
-          rw [hε']
-          have : ‖v‖ * (ε / (‖v‖ + 1)) = ε * (‖v‖ / (‖v‖ + 1)) := by ring
-          rw [this]
-          refine mul_le_of_le_one_right hε.le ?_
-          exact div_le_one_of_le₀ (by linarith) (by positivity)
-  · exact mul_inv_cancel_left (tc y) x
+  classical
+  set F : Finset G := hC_finite.toFinset.image tc
+  refine ⟨F, ?_, ?_⟩
+  · simp only [unitary_isUAP_bound, hε', hr]
+    have hF_card : F.card ≤ hC_finite.toFinset.card := Finset.card_image_le
+    rw [Set.Finite.card_toFinset] at hF_card
+    have hC_card : C.encard.toNat = (Metric.coveringNumber r (Set.range fun t : G ↦ ρ t w)).toNat := by
+      rw [hC_encard]
+    rw [← Set.encard_toNat_eq_coe_card] at hF_card
+    rw [hC_card] at hF_card
+    exact Nat.cast_le.2 hF_card
+  · rintro x -
+    have hx : ρ x w ∈ Set.range fun t : G ↦ ρ t w := ⟨x, rfl⟩
+    have hC_cover' := hC_cover
+    rw [Metric.isCover_iff_subset_iUnion_closedBall] at hC_cover'
+    have hx_mem := hC_cover' hx
+    rw [Set.mem_iUnion₂] at hx_mem
+    obtain ⟨y, hy, hxy⟩ := hx_mem
+    have htc_y : ρ (tc y) w = y := htc y hy
+    refine ⟨tc y, Finset.mem_image_of_mem _ (hC_finite.mem_toFinset.2 hy), (tc y)⁻¹ * x, ?_, ?_⟩
+    · rw [mem_uniformAP]
+      intro z
+      have hkey : ∀ (s : G) (z' : G), ⟪ρ (s⁻¹ * z') v, w⟫_ℂ = ⟪ρ z' v, ρ s w⟫_ℂ := by
+        intro s z'
+        have h1 : ρ (s⁻¹ * z') v = (ρ s).symm (ρ z' v) := by simp
+        rw [h1]
+        calc ⟪(ρ s).symm (ρ z' v), w⟫_ℂ
+            = ⟪ρ s ((ρ s).symm (ρ z' v)), ρ s w⟫_ℂ := ((ρ s).inner_map_map _ _).symm
+          _ = ⟪ρ z' v, ρ s w⟫_ℂ := by simp
+      have h1 : ⟪ρ (((tc y)⁻¹ * x)⁻¹ * z) v, w⟫_ℂ = ⟪ρ (tc y * z) v, ρ x w⟫_ℂ := by
+        rw [← hkey x (tc y * z)]
+        have : ((tc y)⁻¹ * x)⁻¹ * z = x⁻¹ * (tc y * z) := by group
+        rw [this]
+      have h2 : ⟪ρ z v, w⟫_ℂ = ⟪ρ (tc y * z) v, ρ (tc y) w⟫_ℂ := by
+        rw [← hkey (tc y) (tc y * z)]
+        have : (tc y)⁻¹ * (tc y * z) = z := by group
+        rw [this]
+      rw [h1, h2, ← inner_sub_right]
+      have hr_eq : (r : ℝ) = ε' := Real.coe_toNNReal ε' hε'pos.le
+      rw [Metric.mem_closedBall] at hxy
+      rw [hr_eq] at hxy
+      calc ‖⟪ρ (tc y * z) v, ρ x w - ρ (tc y) w⟫_ℂ‖
+          ≤ ‖ρ (tc y * z) v‖ * ‖ρ x w - ρ (tc y) w‖ := norm_inner_le_norm _ _
+        _ = ‖v‖ * ‖ρ x w - ρ (tc y) w‖ := by simp
+        _ ≤ ‖v‖ * ε' := by
+            gcongr
+            rw [htc_y, ← dist_eq_norm, dist_comm]
+            exact hxy
+        _ ≤ ε := by
+            rw [hε']
+            have : ‖v‖ * (ε / (‖v‖ + 1)) = ε * (‖v‖ / (‖v‖ + 1)) := by ring
+            rw [this]
+            refine mul_le_of_le_one_right hε.le ?_
+            exact div_le_one_of_le₀ (by linarith) (by positivity)
+    · exact mul_inv_cancel_left (tc y) x
+
+open scoped Pointwise InnerProductSpace Finset in
+theorem UnitaryRepresentation.isUAP_inner {E : Type*} [NormedAddCommGroup E]
+    [InnerProductSpace ℂ E] [FiniteDimensional ℂ E]
+    (ρ : UnitaryRepresentation ℂ G E) (v w : E) :
+    IsUAP fun x ↦ ⟪ρ x v, w⟫_ℂ :=
+  (isUAPWith_inner ρ v w).isUAP
 
