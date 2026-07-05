@@ -421,7 +421,7 @@ lemma Metric.IsUniformContinuousWith.closedBall_one_subset_uniformAP
     (hf : IsUniformContinuousWith δ f) (hε : 0 < ε) :
     closedBall 1 (δ ε) ⊆ AP∞(f, ε) := by
   intro t ht x
-  simp only [mem_closedBall', ← dist_eq_norm] at ht ⊢
+  simp only [mem_closedBall'] at ht ⊢
   refine hf hε ?_
   grind [dist_mul_right, mul_inv_cancel_right, mul_inv_cancel]
 
