@@ -103,34 +103,51 @@ lemma covBySMul_mulOpposite_iff : CovBySMul Gᵐᵒᵖ K A B ↔ CovBySMul G K A
 section PseudoMetricSpace
 variable [PseudoMetricSpace G] [IsIsometricSMul Gᵐᵒᵖ G] {K L : ℝ} {ε : ℝ}
 
-lemma smul_closedBall_one_eq_univ_iff_isCover (hε : 0 ≤ ε) {F : Set G} :
-    F • closedBall (1 : G) ε = .univ ↔ IsCover ε.toNNReal .univ F⁻¹ := by
+lemma smul_closedBall_eq_univ_iff_isCover (hε : 0 ≤ ε) (x₀ : G) {F : Set G} :
+    F • closedBall x₀ ε = .univ ↔ IsCover ε.toNNReal .univ F⁻¹ := by
   refine ⟨fun h x _ ↦ ?_, fun h ↦ ?_⟩
-  · have h_sub : Set.univ ⊆ F • closedBall (1 : G) ε := h.symm.subset
-    obtain ⟨g, hg, y, hy, hxy⟩ := Set.mem_smul.mp (h_sub (Set.mem_univ x⁻¹))
+  · have h_sub : Set.univ ⊆ F • closedBall x₀ ε := h.symm.subset
+    obtain ⟨g, hg, y, hy, hxy⟩ := Set.mem_smul.mp (h_sub (Set.mem_univ (x⁻¹ * x₀)))
     refine ⟨g⁻¹, by simp [hg], ?_⟩
     simp only [Set.mem_setOf_eq]
-    have hxy' : x * g = y⁻¹ := by rw [← inv_inv x, ← hxy, smul_eq_mul]; group
-    rw [edist_le_coe, ← dist_le_coe, Real.coe_toNNReal _ hε, ← dist_mul_right x g⁻¹ g,
-      inv_mul_cancel, hxy', ← dist_mul_right y⁻¹ 1 y, inv_mul_cancel, one_mul, dist_comm]
-    exact hy
+    have hxy' : g⁻¹ * x⁻¹ * x₀ = y := by rw [mul_assoc, ← hxy, smul_eq_mul, inv_mul_cancel_left]
+    rw [edist_le_coe, ← dist_le_coe, Real.coe_toNNReal _ hε]
+    rw [mem_closedBall] at hy
+    rw [← hxy'] at hy
+    have : dist (g⁻¹ * x⁻¹ * x₀) x₀ = dist g⁻¹ x := by
+      have h_dist := dist_mul_right (g⁻¹ * x⁻¹) 1 x₀
+      rw [one_mul] at h_dist
+      have h1 : dist (g⁻¹ * x⁻¹) 1 = dist (g⁻¹ * x⁻¹ * x) (1 * x) :=
+        (dist_mul_right _ _ _).symm
+      rw [one_mul] at h1
+      have h2 : g⁻¹ * x⁻¹ * x = g⁻¹ := by group
+      rw [h2] at h1
+      rw [h_dist, h1]
+    rwa [this, dist_comm] at hy
   · rw [Set.eq_univ_iff_forall]
     intro x
-    obtain ⟨g_inv, hg_inv, hdist⟩ := h (Set.mem_univ x⁻¹)
+    obtain ⟨g_inv, hg_inv, hdist⟩ := h (Set.mem_univ (x₀ * x⁻¹))
     refine ⟨g_inv⁻¹, hg_inv, g_inv * x, ?_, by simp⟩
-    rw [mem_closedBall, dist_comm, ← dist_mul_right _ _ x⁻¹, mul_inv_cancel_right, one_mul]
+    rw [mem_closedBall]
+    have h_eq : dist (g_inv * x) x₀ = dist g_inv (x₀ * x⁻¹) := by
+      have h1 : dist g_inv (x₀ * x⁻¹) = dist (g_inv * x) (x₀ * x⁻¹ * x) :=
+        (dist_mul_right _ _ _).symm
+      have h2 : x₀ * x⁻¹ * x = x₀ := by group
+      rw [h2] at h1
+      exact h1.symm
+    rw [h_eq, dist_comm]
     simp only [Set.mem_setOf_eq] at hdist
     rwa [edist_le_coe, ← dist_le_coe, Real.coe_toNNReal _ hε] at hdist
 
 @[simp]
-lemma univ_closedBall_one (hε : 0 ≤ ε) :
-    CovBySMul G K .univ (closedBall (1 : G) ε) ↔
+lemma univ_closedBall (hε : 0 ≤ ε) (x₀ : G) :
+    CovBySMul G K .univ (closedBall x₀ ε) ↔
       (coveringNumber ε.toNNReal (.univ : Set G) : EReal) ≤ K := by
   classical
   refine ⟨?_, ?_⟩
   · rintro ⟨F, hF, h_cover⟩
     rw [Set.univ_subset_iff] at h_cover
-    rw [smul_closedBall_one_eq_univ_iff_isCover hε] at h_cover
+    rw [smul_closedBall_eq_univ_iff_isCover hε x₀] at h_cover
     have h_card : ((F : Set G)⁻¹).encard = F.card := by
       rw [← Set.inv_preimage, Set.encard_preimage_of_bijective inv_bijective,
         Set.encard_coe_eq_coe_finsetCard]
@@ -155,8 +172,14 @@ lemma univ_closedBall_one (hε : 0 ≤ ε) :
         congrArg ENat.toNat hF'_card_top
       rw [this]
       exact ENat.natCast_toNat_le_of_ennrealToEReal_toENNReal_le_realToEReal h
-    · rw [Set.univ_subset_iff, smul_closedBall_one_eq_univ_iff_isCover hε]
+    · rw [Set.univ_subset_iff, smul_closedBall_eq_univ_iff_isCover hε x₀]
       have : ((F'.image (fun x ↦ x⁻¹ : G → G) : Set G)⁻¹) = (F' : Set G) := by simp
       exact this.symm ▸ h_cover
+
+@[simp]
+lemma univ_closedBall_one (hε : 0 ≤ ε) :
+    CovBySMul G K .univ (closedBall (1 : G) ε) ↔
+      (coveringNumber ε.toNNReal (.univ : Set G) : EReal) ≤ K :=
+  univ_closedBall hε 1
 
 end PseudoMetricSpace
